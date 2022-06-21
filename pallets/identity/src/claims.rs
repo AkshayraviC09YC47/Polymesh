@@ -1,4 +1,4 @@
-// This file is part of the Polymesh distribution (https://github.com/PolymathNetwork/Polymesh).
+// This file is part of the Polymesh distribution (https://github.com/PolymeshAssociation/Polymesh).
 // Copyright (c) 2020 Polymath
 
 // This program is free software: you can redistribute it and/or modify
@@ -65,7 +65,7 @@ impl<T: Config> Module<T> {
         issuer: IdentityId,
         scope: Option<Scope>,
     ) -> Option<IdentityClaim> {
-        let now = <pallet_timestamp::Module<T>>::get();
+        let now = <pallet_timestamp::Pallet<T>>::get();
 
         Self::fetch_base_claim_with_issuer(id, claim_type, issuer, scope)
             .into_iter()
@@ -112,7 +112,7 @@ impl<T: Config> Module<T> {
         leeway: T::Moment,
         filter_cdd_id: Option<CddId>,
     ) -> impl Iterator<Item = IdentityClaim> {
-        let exp_with_leeway = <pallet_timestamp::Module<T>>::get()
+        let exp_with_leeway = <pallet_timestamp::Pallet<T>>::get()
             .checked_add(&leeway)
             .unwrap_or_default();
 
@@ -217,7 +217,7 @@ impl<T: Config> Module<T> {
         expiry: Option<T::Moment>,
     ) {
         let claim_type = claim.claim_type();
-        let last_update_date = <pallet_timestamp::Module<T>>::get().saturated_into::<u64>();
+        let last_update_date = <pallet_timestamp::Pallet<T>>::get().saturated_into::<u64>();
         let issuance_date = Self::fetch_claim(target, claim_type, issuer, scope.clone())
             .map_or(last_update_date, |id_claim| id_claim.issuance_date);
 
@@ -322,8 +322,8 @@ impl<T: Config> Module<T> {
     /// # Errors
     /// - 'ConfidentialScopeClaimNotAllowed` if :
     ///     - Sender is not the issuer. That claim can be only added by your-self.
-    ///     - You are not the owner of that CDD_ID.
     ///     - If claim is not valid.
+    /// - 'InvalidCDDId' if you are not the owner of that CDD_ID.
     ///
     crate fn base_add_investor_uniqueness_claim(
         origin: T::Origin,
@@ -348,7 +348,7 @@ impl<T: Config> Module<T> {
         // Verify the owner of that CDD_ID.
         ensure!(
             Self::base_fetch_cdd(target, T::Moment::zero(), Some(*cdd_id)).is_some(),
-            Error::<T>::ConfidentialScopeClaimNotAllowed
+            Error::<T>::InvalidCDDId
         );
 
         // Verify the confidential claim.
@@ -358,6 +358,9 @@ impl<T: Config> Module<T> {
         );
 
         if let Scope::Ticker(ticker) = scope {
+            // Ensure uniqueness claims are allowed.
+            T::AssetSubTraitTarget::ensure_investor_uniqueness_claims_allowed(ticker)?;
+
             // Update the balance of the IdentityId under the ScopeId provided in claim data.
             T::AssetSubTraitTarget::update_balance_of_scope_id(scope_id, target, *ticker);
         }
@@ -414,7 +417,7 @@ impl<T: Config> Module<T> {
     ) -> Result<IdentityId, DispatchError> {
         let primary_did = Self::ensure_perms(origin)?;
         ensure!(
-            <DidRecords<T>>::contains_key(target),
+            DidRecords::<T>::contains_key(target),
             Error::<T>::DidMustAlreadyExist
         );
         Ok(primary_did)
@@ -478,6 +481,11 @@ impl<T: Config> Module<T> {
         // Sender has to be part of CDDProviders
         Self::ensure_authorized_cdd_provider(cdd_did)?;
 
+        // Check limit for the SK's permissions.
+        for sk in &secondary_keys {
+            Self::ensure_perms_length_limited(&sk.permissions)?;
+        }
+
         // Register Identity
         let target_did = Self::_register_did(
             target_account,
@@ -497,7 +505,7 @@ impl<T: Config> Module<T> {
     ) -> DispatchResult {
         ensure_root(origin)?;
 
-        let now = <pallet_timestamp::Module<T>>::get();
+        let now = <pallet_timestamp::Pallet<T>>::get();
         ensure!(
             T::CddServiceProviders::get_valid_members_at(now).contains(&cdd),
             Error::<T>::UnAuthorizedCddProvider

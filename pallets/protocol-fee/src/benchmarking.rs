@@ -1,4 +1,4 @@
-// This file is part of the Polymesh distribution (https://github.com/PolymathNetwork/Polymesh).
+// This file is part of the Polymesh distribution (https://github.com/PolymeshAssociation/Polymesh).
 // Copyright (c) 2020 Polymath
 
 // This program is free software: you can redistribute it and/or modify
@@ -18,7 +18,6 @@ use frame_benchmarking::benchmarks;
 use frame_system::RawOrigin;
 use polymesh_common_utilities::protocol_fee::ProtocolOp;
 use polymesh_primitives::PosRatio;
-use sp_std::prelude::*;
 
 benchmarks! {
     change_coefficient {
